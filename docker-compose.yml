@@ -1,0 +1,10 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vpg05-bot
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
