@@ -1,34 +1,31 @@
-# VPg05: Telegram-бот + Weaviate + эмбеддинги (ProxyAPI)
+# VPg06: Telegram + Haystack Agent + Weaviate + эмбеддинги (ProxyAPI)
 
 ## Краткое описание
 
-**Что делает.** Учебный Telegram-бот с **долговременной векторной памятью** сообщений пользователя: эмбеддинги через **OpenAI-совместимый API** ([ProxyAPI](https://proxyapi.ru/docs/overview)), хранение и поиск в **[Weaviate Cloud](https://console.weaviate.cloud/)**. Перед записью выполняется проверка близости (cosine similarity) с порогом `SIMILARITY_THRESHOLD`, чтобы уменьшить дубли (в логах это видно как `inserted` / `updated` / `skipped`).
+**Что делает.** Учебный Telegram-бот — **персональный агент** на **[Haystack](https://haystack.deepset.ai/overview/quick-start)** (`Agent`, tool calling): ответы через **OpenAI-совместимый API** ([ProxyAPI](https://proxyapi.ru/docs/overview)), долговременная память в **[Weaviate Cloud](https://console.weaviate.cloud/)** через **`weaviate-haystack`** ([`WeaviateDocumentStore`](https://haystack.deepset.ai/integrations/weaviate-document-store)), семантический поиск по эмбеддингам. В **Weaviate** сохраняется **только текст сообщений пользователя** (`role=user`); ответы ассистента в базу не пишутся. Краткий контекст диалога — в памяти процесса. Инструменты: факт о кошках (`catfact.ninja`), случайное фото собаки (`dog.ceo`) + описание через **vision**; фото дублируется в чат через `send_photo` (без повторной отправки старых картинок при повторном запросе).
 
-Историческое имя **`PineconeManager`** в `src/vpg05/pinecone_manager.py` оставлено для совместимости с формулировками ДЗ, но внутри используется **Weaviate**, не Pinecone.
+**Как запускать.** `cp .env.example .env`, задать `WEAVIATE_URL`, `WEAVIATE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY` (см. `.env.example`). Затем `docker compose up -d --build`. Логи: `docker compose logs -f bot`. Остановка: `docker compose down`.
 
-**Как запускать.** `cp .env.example .env`, задать `WEAVIATE_URL`, `WEAVIATE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY` (см. комментарии в примере). Затем `docker compose up -d --build`. Логи: `docker compose logs -f bot`. Остановка: `docker compose down`.
-
-Исходящие запросы к **Telegram Bot API**, к ProxyAPI и к **Weaviate** идут по **HTTPS**. Входящий HTTP/TLS-сервер приложение **не поднимает** — бот работает через **long polling**.
+Исходящие запросы к **Telegram Bot API**, к ProxyAPI и к **Weaviate** идут по **HTTPS**. Входящий HTTP/TLS-сервер приложение **не поднимает** — бот работает через **long polling** ([pyTelegramBotAPI](https://github.com/eternnoir/pyTelegramBotAPI)).
 
 Структура кода согласована с [Guide](https://github.com/SpiritWalker84/Guide) (`docs/conventions/`).
 
 ## Стек
 
-Python **3.12**, **weaviate-client** v4, **OpenAI SDK**, **python-telegram-bot**, **python-dotenv**, Docker / Compose.
+Python **3.12**, **haystack-ai**, **weaviate-haystack**, **weaviate-client** v4, **OpenAI SDK**, **pyTelegramBotAPI**, **requests**, **python-dotenv**, Docker / Compose.
 
 ## Структура
 
 | Путь | Назначение |
 |------|------------|
 | `src/vpg05/config.py` | Загрузка настроек из `.env` |
-| `src/vpg05/embeddings.py` | OpenAI-совместимый клиент (эмбеддинги + чат) |
-| `src/vpg05/weaviate_store.py` | Низкоуровневое хранилище Weaviate |
-| `src/vpg05/pinecone_manager.py` | Менеджер памяти (интерфейс ДЗ) + дедупликация |
-| `src/vpg05/bot.py` | Telegram-бот (handlers) |
-| `main.py` | Точка входа для контейнера/локального запуска |
+| `src/vpg05/haystack_assistant.py` | Weaviate (Haystack), эмбеддинги, Agent, память |
+| `src/vpg05/tools_external.py` | Инструменты: кошки, собаки + vision |
+| `src/vpg05/bot.py` | Telegram-бот (long polling) |
+| `main.py` | Точка входа для контейнера и локального запуска |
 | `.env.example` | Переменные окружения |
 | `docker-compose.yml`, `Dockerfile` | Запуск бота в контейнере |
-| `tests/` | Pytest |
+| `tests/` | Pytest (`test_memory_policy.py` и др.) |
 
 ## Запуск
 
@@ -42,7 +39,7 @@ docker compose up -d --build
 docker compose logs -f bot
 ```
 
-Контейнер: `python main.py`.
+Контейнер: `python main.py` (в образе `PYTHONPATH=/app/src`).
 
 ### Локально
 
@@ -50,49 +47,48 @@ docker compose logs -f bot
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-python3 main.py
+PYTHONPATH=src python main.py
 ```
 
-Ручная проверка памяти без Telegram (нужны ключи в `.env`):
+### Тесты (без Telegram)
 
 ```bash
-PYTHONPATH=src python3 -m vpg05.pinecone_manager
+PYTHONPATH=src pytest
 ```
 
 ## Команды бота
 
-| Команда | Действие |
-|---------|----------|
-| `/start` | Короткое приветствие |
+| Команда / ввод | Действие |
+|----------------|----------|
+| `/start` | Приветствие |
 | `/help` | Справка |
-| Текст (не команда) | Ответ LLM + запись **только текста пользователя** в память |
+| Текст (не команда) | Агент + память Weaviate + инструменты по необходимости |
 
 ## Конфигурация
 
-См. **`.env.example`**. `EMBEDDING_DIMENSION` должен совпадать с размерностью векторов в классе Weaviate (по умолчанию **1536** для `text-embedding-3-small`).
+См. **`.env.example`**. `EMBEDDING_DIMENSION` должен совпадать с размерностью векторов (для `text-embedding-3-small` обычно **1536**).
 
 | Переменная | Обязательность | Описание |
 |------------|----------------|----------|
 | `OPENAI_API_KEY` | да | Ключ ProxyAPI / совместимого API |
 | `OPENAI_API_BASE` | нет | По умолчанию `https://api.proxyapi.ru/openai/v1`; запасной ключ `OPENAI_BASE_URL` |
-| `OPENAI_CHAT_MODEL` | нет | Модель для ответов в чате |
-| `OPENAI_EMBEDDING_MODEL` | нет | Модель для эмбеддингов |
+| `OPENAI_CHAT_MODEL` | нет | Модель чата для агента |
+| `OPENAI_VISION_MODEL` | нет | Vision для собаки (по умолчанию совпадает с `OPENAI_CHAT_MODEL`) |
+| `OPENAI_EMBEDDING_MODEL` | нет | Модель эмбеддингов |
 | `EMBEDDING_DIMENSION` | нет | Размерность векторов (**1536** для `text-embedding-3-small`) |
-| `WEAVIATE_URL` | да | REST endpoint кластера |
-| `WEAVIATE_API_KEY` | да | API key Weaviate Cloud |
-| `WEAVIATE_COLLECTION_NAME` | нет | Имя класса в Weaviate (по умолчанию `Vpg05Memory`) |
+| `WEAVIATE_URL` | да | Endpoint кластера Weaviate Cloud |
+| `WEAVIATE_API_KEY` | да | API key Weaviate |
+| `WEAVIATE_COLLECTION_NAME` | нет | Имя коллекции (по умолчанию `Vpg06HaystackMemory`; схема задаётся Haystack — не смешивать со старыми классами вроде `Vpg05Memory`) |
 | `TELEGRAM_BOT_TOKEN` | да | Токен от [@BotFather](https://t.me/BotFather) |
-| `SIMILARITY_THRESHOLD` | нет | Порог похожести (0..1). Слишком низкий порог часто даёт ложные совпадения |
-| `LOG_LEVEL` | нет | Уровень логирования (по умолчанию `INFO`) |
+| `MEMORY_TOP_K` | нет | Сколько документов памяти в системный промпт |
+| `CHAT_HISTORY_MAX_MESSAGES` | нет | Лимит сообщений истории в сессии |
+| `MAX_AGENT_STEPS` | нет | Лимит шагов агента |
+| `LOG_LEVEL` | нет | Уровень логирования (`INFO` по умолчанию) |
 
 Секреты в git не коммитить.
 
-### Где смотреть результат дедупликации
+## Проверка задания (кратко)
 
-В обычном режиме Telegram это **не показывает пользователю** — смотрите строки логов вида `Memory upsert result: ...` (`docker compose logs -f bot`).
-
-## Тесты
-
-```bash
-PYTHONPATH=src pytest
-```
+1. **Память:** в Weaviate только реплики пользователя — см. код и `tests/test_memory_policy.py`.
+2. **Контекст:** уникальная фраза в чате → позже вопрос по ней; релевантные фрагменты подставляются из Weaviate.
+3. **Инструменты:** запрос факта о кошках; запрос случайной собаки — фото в чат + текст описания (один новый URL за запрос).

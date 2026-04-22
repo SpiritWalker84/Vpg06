@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vpg05-bot
+    container_name: vpg06-bot
     restart: unless-stopped
     env_file:
       - path: .env

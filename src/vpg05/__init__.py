@@ -1,1 +1,1 @@
-"""VPg05 Telegram bot with Weaviate memory."""
+"""Telegram-бот с Haystack-агентом и Weaviate (haystack-интеграция)."""
