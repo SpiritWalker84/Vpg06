@@ -20,7 +20,7 @@ Python **3.12**, **haystack-ai**, **weaviate-haystack**, **weaviate-client** v4,
 |------|------------|
 | `src/vpg05/config.py` | Загрузка настроек из `.env` |
 | `src/vpg05/haystack_assistant.py` | Weaviate (Haystack), эмбеддинги, Agent, память |
-| `src/vpg05/tools_external.py` | Инструменты: кошки, собаки + vision |
+| `src/vpg05/tools_external.py` | Инструменты: `fetch_random_cat_fact`, `describe_random_dog_from_photo` (+ константы `TOOL_NAME_*`) |
 | `src/vpg05/bot.py` | Telegram-бот (long polling) |
 | `main.py` | Точка входа для контейнера и локального запуска |
 | `.env.example` | Переменные окружения |
@@ -63,6 +63,36 @@ PYTHONPATH=src pytest
 | `/start` | Приветствие |
 | `/help` | Справка |
 | Текст (не команда) | Агент + память Weaviate + инструменты по необходимости |
+
+## Путь запроса: пример vision-инструмента (случайная собака)
+
+Ниже тот же сценарий, что в коде: от реплики пользователя до `send_photo` в Telegram. Имя инструмента в API — `describe_random_dog_from_photo` (в модуле зафиксировано как `TOOL_NAME_DESCRIBE_RANDOM_DOG_VISION`).
+
+1. Пользователь пишет в чат, например: «покажи случайную собаку и опиши породу».
+2. `bot.on_text` → `HaystackPersonalAssistant.reply`: семантический поиск по Weaviate, сбор системного промпта (там перечислены имена инструментов, см. `haystack_assistant._build_system_prompt`), история сессии.
+3. `Agent.run` (Haystack) → модель решает вызвать tool **`describe_random_dog_from_photo`**.
+4. Реализация в `tools_external.build_external_tools` → `describe_random_dog_from_photo`: HTTP к dog.ceo, затем OpenAI **vision** по URL картинки; первая строка результата `DOG_IMAGE_URL:…` нужна боту.
+5. `reply` в `haystack_assistant` собирает `AssistantReply`: URL извлекаются из tool-сообщений текущего хода, текст ответа очищается от дублирования ссылки.
+6. `bot` отправляет фото через `send_photo` по URL, затем текст пользователю.
+
+```mermaid
+sequenceDiagram
+  participant U as Пользователь
+  participant B as bot.py
+  participant H as HaystackPersonalAssistant
+  participant A as OpenAI (агент)
+  participant T as describe_random_dog_from_photo
+  U->>B: текст в Telegram
+  B->>H: reply(user_id, text, …)
+  H->>H: Weaviate, system prompt, история
+  H->>A: Agent.run
+  A->>T: tool call
+  T->>T: dog.ceo + vision API
+  T-->>A: DOG_IMAGE_URL + описание
+  A-->>H: сообщения + ответ
+  H-->>B: AssistantReply(photo_urls, text)
+  B->>U: send_photo, затем текст
+```
 
 ## Конфигурация
 

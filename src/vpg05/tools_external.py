@@ -1,4 +1,10 @@
-"""Примеры инструментов агента: внешние API (кошки, собаки + vision)."""
+"""Инструменты Haystack Agent: внешние API (кошки, собаки + vision).
+
+Имена инструментов в OpenAI tool calling = имена зарегистрированных функций ниже
+(см. TOOL_NAME_*). Системный промпт в `haystack_assistant._build_system_prompt`
+ссылается на те же строки, чтобы по коду и промпту было видно полный путь
+«пользователь → выбор инструмента → реализация».
+"""
 
 from __future__ import annotations
 
@@ -10,7 +16,12 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-# Первая строка ответа инструмента — для Telegram: бот отправляет фото по этому URL пользователю.
+# Имена для tool calling (должны совпадать с именами функций в create_tool_from_function).
+TOOL_NAME_FETCH_CAT_FACT = "fetch_random_cat_fact"
+# Основной «композитный» инструмент: dog.ceo + vision (см. также DOG_IMAGE_URL в ответе).
+TOOL_NAME_DESCRIBE_RANDOM_DOG_VISION = "describe_random_dog_from_photo"
+
+# Первая строка ответа vision-инструмента: `haystack_assistant` / `bot.py` шлют фото в Telegram.
 DOG_IMAGE_URL_LINE_PREFIX = "DOG_IMAGE_URL:"
 
 _CAT_FACT_URL = "https://catfact.ninja/fact"
@@ -26,6 +37,7 @@ def build_external_tools(
     """Собирает инструменты с замыканием на OpenAI-клиент для vision."""
     oa_client = OpenAI(api_key=openai_api_key, base_url=openai_base_url)
 
+    # Инструмент: имя в API = `fetch_random_cat_fact` (см. TOOL_NAME_FETCH_CAT_FACT).
     def fetch_random_cat_fact() -> str:
         """
         Возвращает случайный короткий факт о кошках с бесплатного API catfact.ninja.
@@ -41,6 +53,7 @@ def build_external_tools(
             logger.warning("cat fact failed: %s", exc)
             return f"Не удалось получить факт о кошках: {exc}"
 
+    # Vision-инструмент: имя в API = `describe_random_dog_from_photo` (см. TOOL_NAME_DESCRIBE_RANDOM_DOG_VISION).
     def describe_random_dog_from_photo() -> str:
         """
         Загружает случайное изображение собаки (dog.ceo), отправляет его в vision-модель OpenAI

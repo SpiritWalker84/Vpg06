@@ -24,7 +24,12 @@ from haystack_integrations.document_stores.weaviate.document_store import (
 )
 
 from vpg05.config import Settings
-from vpg05.tools_external import DOG_IMAGE_URL_LINE_PREFIX, build_external_tools
+from vpg05.tools_external import (
+    DOG_IMAGE_URL_LINE_PREFIX,
+    TOOL_NAME_DESCRIBE_RANDOM_DOG_VISION,
+    TOOL_NAME_FETCH_CAT_FACT,
+    build_external_tools,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +197,7 @@ class HaystackPersonalAssistant:
             filters={},
         )
 
+        # Список `Tool` и имена в API задаются в `tools_external.build_external_tools`.
         tools = build_external_tools(
             openai_api_key=settings.openai_api_key,
             openai_base_url=settings.openai_api_base,
@@ -264,11 +270,15 @@ class HaystackPersonalAssistant:
             f"Собеседник: {who}.\n"
             "Ниже релевантные фрагменты долговременной памяти (семантический поиск, косинусная близость). "
             "Используй их, если уместно; не выдумывай факты, которых нет в памяти и переписке.\n"
-            "Инструменты: зови только когда пользователь явно интересуется фактами о кошках, собаках, породах "
-            "или согласен на развлекательный контент. Не вызывай инструменты на каждое сообщение.\n"
-            "Если вызывал инструмент со случайной собакой: само фото пользователь получит отдельным сообщением в Telegram. "
-            "В своём ответе не вставляй markdown-картинки вида ![...](url), не дублируй ссылку на изображение — "
-            "только обычный текст с описанием породы.\n\n"
+            "Инструменты вызывай умеренно: только если пользователю уместны факты о кошках, собаке/породе "
+            "или лёгкий развлекательный запрос. Не вызывай инструменты на каждое сообщение.\n"
+            f"Список инструментов (имена в API):\n"
+            f"- {TOOL_NAME_FETCH_CAT_FACT} — короткий факт о кошках (внешний API catfact.ninja), "
+            "когда явно о кошках или в тему «факт дня».\n"
+            f"- {TOOL_NAME_DESCRIBE_RANDOM_DOG_VISION} — **основной мультимодальный сценарий**: "
+            "случайное фото с dog.ceo + краткое описание породы через vision; само фото пользователь "
+            "получит отдельным сообщением в Telegram, не вставляй в ответ markdown-картинок ![...](url) "
+            "и не дублируй URL — только обычный текст с выводом по породе.\n\n"
             f"Память:\n{memory_block}"
         )
 
